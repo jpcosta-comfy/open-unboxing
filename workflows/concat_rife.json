@@ -1,0 +1,86 @@
+{
+  "_meta": {
+    "name": "Concat + RIFE",
+    "purpose": "Stitch LTX clips then double the frame rate with RIFE VFI (open weights). Patch LoadVideo filenames to the clips produced by ltx25_flf2v.",
+    "inputs": {
+      "10.file / 11.file / 12.file / 13.file": "MP4 filenames already in Comfy input storage",
+      "20.videos.video1..video4": "ConcatenateVideo autogrow",
+      "40.ckpt_name": "rife49.pth | rife47.pth | rife426.pth",
+      "40.multiplier": "2",
+      "50.format": "video/h264-mp4",
+      "50.frame_rate": "48 (24×2)"
+    },
+    "outputs": { "50": "VHS_VideoCombine MP4" }
+  },
+  "10": {
+    "class_type": "LoadVideo",
+    "inputs": { "file": "clip_01.mp4" },
+    "_meta": { "title": "Clip A sealed→open" }
+  },
+  "11": {
+    "class_type": "LoadVideo",
+    "inputs": { "file": "clip_02.mp4" },
+    "_meta": { "title": "Clip B open→lift" }
+  },
+  "12": {
+    "class_type": "LoadVideo",
+    "inputs": { "file": "clip_03.mp4" },
+    "_meta": { "title": "Clip C lift→rotate" }
+  },
+  "13": {
+    "class_type": "LoadVideo",
+    "inputs": { "file": "clip_04.mp4" },
+    "_meta": { "title": "Clip D rotate→table" }
+  },
+  "20": {
+    "class_type": "ConcatenateVideo",
+    "inputs": {
+      "videos": {
+        "video1": ["10", 0],
+        "video2": ["11", 0],
+        "video3": ["12", 0],
+        "video4": ["13", 0]
+      },
+      "codec": "auto"
+    },
+    "_meta": { "title": "Concat" }
+  },
+  "30": {
+    "class_type": "GetVideoComponents",
+    "inputs": { "video": ["20", 0] },
+    "_meta": { "title": "Frames" }
+  },
+  "40": {
+    "class_type": "RIFE VFI",
+    "inputs": {
+      "ckpt_name": "rife49.pth",
+      "frames": ["30", 0],
+      "clear_cache_after_n_frames": 10,
+      "multiplier": 2,
+      "fast_mode": true,
+      "ensemble": true,
+      "scale_factor": 1.0,
+      "dtype": "float32",
+      "torch_compile": false,
+      "batch_size": 1
+    },
+    "_meta": { "title": "RIFE ×2" }
+  },
+  "50": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["40", 0],
+      "frame_rate": 48,
+      "loop_count": 0,
+      "filename_prefix": "ou_unboxing",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true,
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false
+    },
+    "_meta": { "title": "Save H.264" }
+  }
+}

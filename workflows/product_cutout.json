@@ -1,0 +1,42 @@
+{
+  "_meta": {
+    "name": "Product cutout (rembg)",
+    "purpose": "Remove the studio background from a product-only still. Open-weight ISNet on Comfy Cloud, no partner node.",
+    "inputs": {
+      "1.image": "Uploaded product filename",
+      "2.model": "isnet-general-use | u2net | silueta",
+      "2.transparency": true,
+      "2.background_color": "none"
+    },
+    "outputs": { "3": "SaveImage RGBA cutout" }
+  },
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "product.png" },
+    "_meta": { "title": "Product photo" }
+  },
+  "2": {
+    "class_type": "Image Rembg (Remove Background)",
+    "inputs": {
+      "images": ["1", 0],
+      "transparency": true,
+      "model": "isnet-general-use",
+      "post_processing": true,
+      "only_mask": false,
+      "alpha_matting": false,
+      "alpha_matting_foreground_threshold": 240,
+      "alpha_matting_background_threshold": 10,
+      "alpha_matting_erode_size": 10,
+      "background_color": "none"
+    },
+    "_meta": { "title": "Rembg ISNet" }
+  },
+  "3": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["2", 0],
+      "filename_prefix": "ou_cutout"
+    },
+    "_meta": { "title": "Save cutout" }
+  }
+}
