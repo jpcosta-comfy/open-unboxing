@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Comfy Cloud helper. Reads COMFY_API_KEY from the environment. Never prints it."""
+"""Comfy helper. Reads COMFY_API_KEY and COMFY_BASE_URL. Never prints the key."""
 from __future__ import annotations
 
 import json
@@ -15,32 +15,14 @@ from typing import Any
 BASE = os.environ.get("COMFY_BASE_URL", "https://cloud.comfy.org").rstrip("/")
 
 
-def _balance(k: str) -> float:
-    req = urllib.request.Request(
-        f"{os.environ.get('COMFY_BASE_URL', 'https://cloud.comfy.org').rstrip('/')}/api/billing/balance",
-        headers={"X-API-Key": k},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            body = json.loads(resp.read().decode())
-        return float(body.get("effective_balance_cents") or 0)
-    except Exception:
-        return 0.0
-
-
-def _pick_key() -> str:
-    # Prefer COMFY_API_KEY. If that workspace cannot queue, use the team key.
-    primary = os.environ.get("COMFY_API_KEY") or os.environ.get("COMFY_CLOUD_API_KEY")
-    fallback = os.environ.get("COMFY_CLOUD_TEAM_API_KEY")
-    if not primary and not fallback:
+def _api_key() -> str:
+    k = os.environ.get("COMFY_API_KEY")
+    if not k:
         raise SystemExit("COMFY_API_KEY is not set")
-    if primary and fallback and primary != fallback:
-        if _balance(primary) <= 0 and _balance(fallback) > 0:
-            return fallback
-    return primary or fallback
+    return k
 
 
-KEY = _pick_key()
+KEY = _api_key()
 
 
 def _headers(json_body: bool = False) -> dict[str, str]:
@@ -73,7 +55,6 @@ def _req(method: str, path: str, data: bytes | None = None, headers: dict[str, s
 
 
 def submit(workflow: dict[str, Any], extra_data: dict[str, Any] | None = None) -> str:
-    global KEY
     payload: dict[str, Any] = {
         "prompt": workflow,
         "extra_data": {
@@ -82,13 +63,6 @@ def submit(workflow: dict[str, Any], extra_data: dict[str, Any] | None = None) -
         },
     }
     status, body = _req("POST", "/api/prompt", data=json.dumps(payload).encode(), timeout=60)
-    if status == 402:
-        alt = os.environ.get("COMFY_CLOUD_TEAM_API_KEY")
-        if alt and alt != KEY:
-            print("  primary key cannot queue (402); retrying with team workspace", flush=True)
-            KEY = alt
-            payload["extra_data"]["api_key_comfy_org"] = KEY
-            status, body = _req("POST", "/api/prompt", data=json.dumps(payload).encode(), timeout=60)
     if status != 200:
         raise RuntimeError(f"submit failed HTTP {status}: {body}")
     if not isinstance(body, dict) or "prompt_id" not in body:
@@ -101,7 +75,6 @@ def submit(workflow: dict[str, Any], extra_data: dict[str, Any] | None = None) -
 def job_status(prompt_id: str) -> str:
     status, body = _req("GET", f"/api/job/{prompt_id}/status", headers=_headers())
     if status != 200:
-        # fallback
         status2, body2 = _req("GET", f"/api/jobs/{prompt_id}", headers=_headers())
         if status2 == 200 and isinstance(body2, dict):
             return str(body2.get("status") or "unknown")

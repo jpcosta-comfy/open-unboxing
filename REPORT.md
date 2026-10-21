@@ -21,10 +21,11 @@ preset plates (lid / empty / mask) ───────┤
             ffmpeg concat  (+ workflows/concat_rife.json)
 ```
 
-Comfy Cloud client: `src/lib/comfy.ts` and `scripts/comfy_cloud.py`.
+Comfy client: `src/lib/comfy.ts` and `scripts/comfy_cloud.py`. Talks to a Comfy serverless deployment (Comfy Build spec: [`build/comfy-build.yaml`](build/comfy-build.yaml)).
 
-- Auth: `X-API-Key` on `https://cloud.comfy.org`
-- Partner nodes: `extra_data.api_key_comfy_org`
+- Base: `COMFY_BASE_URL` (default `https://cloud.comfy.org`)
+- Auth: `COMFY_API_KEY` as `X-API-Key` — single key, no other env names
+- Partner nodes: `extra_data.api_key_comfy_org` (same key)
 - Upload: `POST /api/upload/image`
 - Submit: `POST /api/prompt`
 - Poll: `GET /api/job/{id}/status`
@@ -50,7 +51,7 @@ Node/input map: [`workflows/NODE_MAP.md`](workflows/NODE_MAP.md).
 ## How to run
 
 ```bash
-cp .env.example .env.local   # set COMFY_API_KEY
+cp .env.example .env.local   # set COMFY_API_KEY (and COMFY_BASE_URL for your own endpoint)
 npm install
 npm run dev                  # http://localhost:3000
 ```
@@ -85,7 +86,7 @@ Pipeline that produced the sample:
 
 ## Open issues
 
-- The `COMFY_API_KEY` workspace in this environment returned **HTTP 402** (no credits). Generations used `COMFY_CLOUD_TEAM_API_KEY` as a fallback. The app retries on 402 the same way.
+- Generations need a funded `COMFY_API_KEY`. The client does not read any other key.
 - WAS rembg + `SaveImage` flattened the cutout onto an opaque beige, so the raw composite still showed a studio rectangle. FLUX 3’s blend edit recovered a nested plate.
 - That blend also drifted the dripper toward a ribbed Hario silhouette and slightly off true 90°. Lower denoise / Qwen 2511 is the intended tighter path; it was not used for the sample clip.
 - The committed demo is **one** LTX pair (sealed → nested), not the full four-clip concat + RIFE pass. The graphs and orchestrator for the full path are in-repo.

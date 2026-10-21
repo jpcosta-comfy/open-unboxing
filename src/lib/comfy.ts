@@ -11,22 +11,13 @@ export type ComfyFile = {
 };
 
 function apiKey(): string {
-  const primary = process.env.COMFY_API_KEY;
-  const team = process.env.COMFY_CLOUD_TEAM_API_KEY;
-  if (primary) return primary;
-  if (team) return team;
-  throw new Error("COMFY_API_KEY is not set on the server");
-}
-
-let activeKey = "";
-
-function key(): string {
-  if (!activeKey) activeKey = apiKey();
-  return activeKey;
+  const k = process.env.COMFY_API_KEY;
+  if (!k) throw new Error("COMFY_API_KEY is not set on the server");
+  return k;
 }
 
 function jsonHeaders(): Record<string, string> {
-  return { "X-API-Key": key(), "Content-Type": "application/json" };
+  return { "X-API-Key": apiKey(), "Content-Type": "application/json" };
 }
 
 async function parseBody(res: Response): Promise<unknown> {
@@ -41,7 +32,7 @@ async function parseBody(res: Response): Promise<unknown> {
 export async function comfyFetch(pathname: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   if (!headers.has("X-API-Key") && !headers.has("Authorization")) {
-    headers.set("X-API-Key", key());
+    headers.set("X-API-Key", apiKey());
   }
   return fetch(`${BASE}${pathname}`, { ...init, headers });
 }
@@ -53,7 +44,7 @@ export async function uploadImage(file: Buffer, filename: string): Promise<strin
   form.append("overwrite", "true");
   const res = await fetch(`${BASE}/api/upload/image`, {
     method: "POST",
-    headers: { "X-API-Key": key() },
+    headers: { "X-API-Key": apiKey() },
     body: form,
   });
   const body = await parseBody(res);
@@ -68,26 +59,17 @@ export async function uploadImage(file: Buffer, filename: string): Promise<strin
 export async function submitWorkflow(
   workflow: Record<string, unknown>,
 ): Promise<string> {
+  const k = apiKey();
   const payload = {
     prompt: workflow,
-    extra_data: { api_key_comfy_org: key() },
+    extra_data: { api_key_comfy_org: k },
   };
-  let res = await fetch(`${BASE}/api/prompt`, {
+  const res = await fetch(`${BASE}/api/prompt`, {
     method: "POST",
     headers: jsonHeaders(),
     body: JSON.stringify(payload),
   });
-  let body = await parseBody(res);
-  if (res.status === 402 && process.env.COMFY_CLOUD_TEAM_API_KEY && key() !== process.env.COMFY_CLOUD_TEAM_API_KEY) {
-    activeKey = process.env.COMFY_CLOUD_TEAM_API_KEY;
-    payload.extra_data.api_key_comfy_org = activeKey;
-    res = await fetch(`${BASE}/api/prompt`, {
-      method: "POST",
-      headers: jsonHeaders(),
-      body: JSON.stringify(payload),
-    });
-    body = await parseBody(res);
-  }
+  const body = await parseBody(res);
   if (!res.ok) {
     throw new Error(`submit failed HTTP ${res.status}: ${JSON.stringify(body)}`);
   }
@@ -201,7 +183,7 @@ export async function downloadView(file: ComfyFile, dest: string): Promise<Buffe
     type: file.type || "output",
   });
   const res = await fetch(`${BASE}/api/view?${qs.toString()}`, {
-    headers: { "X-API-Key": key() },
+    headers: { "X-API-Key": apiKey() },
     redirect: "manual",
   });
   let buf: Buffer;

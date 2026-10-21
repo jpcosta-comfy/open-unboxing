@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "Open-source overhead ASMR unboxing studio — a Comfy Cloud alternative to Higgsfield Marketing Studio Unboxing mode.",
+  "description": "Open-source overhead ASMR unboxing studio — a Comfy alternative to Higgsfield Marketing Studio Unboxing mode.",
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",

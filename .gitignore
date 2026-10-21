@@ -10,7 +10,7 @@ out
 .env.*.local
 *.tsbuildinfo
 .DS_Store
-grok.log
+grok*.log
 BRIEF.md
 uploads
 tmp

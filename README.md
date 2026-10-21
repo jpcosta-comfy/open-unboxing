@@ -10,7 +10,7 @@ Upload **five or more product-only stills**, pick an **unbranded box** from the 
 4. Product rotated  
 5. Product on the table  
 
-Everything generative runs on **Comfy Cloud** (`https://cloud.comfy.org`). There is no local ComfyUI.
+Everything generative runs on a **Comfy serverless deployment** (a Comfy Build release on [platform.comfy.org](https://platform.comfy.org)). There is no local ComfyUI. The client talks to `COMFY_BASE_URL` (default `https://cloud.comfy.org`).
 
 ## Why this is better than Higgsfield Unboxing
 
@@ -29,12 +29,12 @@ The product is composited into a photographed insert, then *lightly* edited. Tha
 ## How to run
 
 ```bash
-cp .env.example .env.local   # then paste a Comfy Cloud key as COMFY_API_KEY
+cp .env.example .env.local   # then paste a Comfy API key as COMFY_API_KEY
 npm install
 npm run dev                  # http://localhost:3000
 ```
 
-Create an API key at [platform.comfy.org](https://platform.comfy.org/profile/api-keys). The key stays on the server (`src/lib/comfy.ts`). Never put it in git.
+Create an API key at [platform.comfy.org](https://platform.comfy.org/profile/api-keys). The key stays on the server (`src/lib/comfy.ts`). It is sent as `X-API-Key` and as `extra_data.api_key_comfy_org` for partner nodes. Never put it in git. There is a single key — no other env names are read.
 
 ```bash
 npm run typecheck
@@ -50,14 +50,31 @@ See `.env.example`.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `COMFY_API_KEY` | yes | `X-API-Key` for `https://cloud.comfy.org` |
-| `COMFY_BASE_URL` | no | Defaults to `https://cloud.comfy.org` |
+| `COMFY_API_KEY` | yes | Sent as `X-API-Key` and as `extra_data.api_key_comfy_org` |
+| `COMFY_BASE_URL` | no | Deployment endpoint, e.g. `https://dep-xxxx.run.comfy.app`. Defaults to `https://cloud.comfy.org` |
+
+## Run your own endpoint
+
+The Comfy Build spec is [`build/comfy-build.yaml`](build/comfy-build.yaml). Push, release, and deploy it on [platform.comfy.org](https://platform.comfy.org):
+
+```bash
+pip install -U comfy-cli
+comfy build push build/
+comfy build release create build/ --target linux/nvidia --watch
+comfy deploy up build/ --gpu rtx-pro-6000-server --region us --min 0 --max 1
+```
+
+Set `COMFY_BASE_URL` to the printed `endpointUrl` (for example `https://dep-xxxx.run.comfy.app`). Stop the replica when you are done:
+
+```bash
+comfy deploy stop build/
+```
 
 ## Workflow
 
 API-format graphs live in [`workflows/`](workflows/NODE_MAP.md). The studio orchestrates them:
 
-1. **Upload** product stills to Comfy Cloud (`POST /api/upload/image`)
+1. **Upload** product stills (`POST {COMFY_BASE_URL}/api/upload/image`)
 2. **Cutout** — `product_cutout.json` (ISNet rembg, open weights)
 3. **Composite** — scale-fit the cutout into the preset insert mask (magenta well → bbox)
 4. **Blend edit** — `flux3_image_edit.json` (default) or `qwen_image_edit_2511.json` (open weights, Lightning 4-step, denoise 0.35)
@@ -71,7 +88,7 @@ Partner nodes send `extra_data.api_key_comfy_org`. The server polls `GET /api/jo
 
 ### Preset library
 
-Generated on Comfy Cloud with FLUX 3 and committed under `public/presets/`:
+Generated with FLUX 3 and committed under `public/presets/`:
 
 - **Kraft mailer** — brown fiber, gummed tape
 - **Rigid luxury** — matte ivory set-up box
@@ -87,7 +104,7 @@ npm run generate:presets
 
 ## Demo
 
-A real Comfy Cloud run is saved at:
+A real Comfy run is saved at:
 
 - [`demo/unboxing.mp4`](demo/unboxing.mp4) — LTX 2.5 Fast FLF overhead unbox with stereo audio (720×1280, 3s)
 - [`demo/product/`](demo/product/) — five sage ceramic pour-over stills

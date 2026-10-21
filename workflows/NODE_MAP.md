@@ -1,6 +1,6 @@
 # Workflow node / input map
 
-All graphs under this folder are **API format** (`{ "nodeId": { "class_type", "inputs" } }`), the payload `POST https://cloud.comfy.org/api/prompt` expects inside `prompt`. Partner nodes also need:
+All graphs under this folder are **API format** (`{ "nodeId": { "class_type", "inputs" } }`), the payload `POST {COMFY_BASE_URL}/api/prompt` expects inside `prompt` (`COMFY_BASE_URL` defaults to `https://cloud.comfy.org`). Partner nodes also need:
 
 ```json
 "extra_data": { "api_key_comfy_org": "<COMFY_API_KEY>" }
