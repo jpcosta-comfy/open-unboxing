@@ -34,7 +34,7 @@ npm install
 npm run dev                  # http://localhost:3000
 ```
 
-Create an API key at [platform.comfy.org](https://platform.comfy.org/profile/api-keys). The key stays on the server (`src/lib/comfy.ts`). It is sent as `X-API-Key` and as `extra_data.api_key_comfy_org` for partner nodes. Never put it in git. There is a single key — no other env names are read.
+Create an API key at [platform.comfy.org](https://platform.comfy.org/profile/api-keys). The key stays on the server (`src/lib/comfy.ts`). It is sent as `Authorization: Bearer` and as `extra_data.api_key_comfy_org` for partner nodes. Never put it in git. There is a single key — no other env names are read.
 
 ```bash
 npm run typecheck
@@ -50,7 +50,7 @@ See `.env.example`.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `COMFY_API_KEY` | yes | Sent as `X-API-Key` and as `extra_data.api_key_comfy_org` |
+| `COMFY_API_KEY` | yes | Sent as `Authorization: Bearer` and as `extra_data.api_key_comfy_org` |
 | `COMFY_BASE_URL` | no | Deployment endpoint, e.g. `https://dep-xxxx.run.comfy.app`. Defaults to `https://cloud.comfy.org` |
 
 ## Run your own endpoint
@@ -74,7 +74,7 @@ comfy deploy stop build/
 
 API-format graphs live in [`workflows/`](workflows/NODE_MAP.md). The studio orchestrates them:
 
-1. **Upload** product stills (`POST {COMFY_BASE_URL}/api/upload/image`)
+1. **Upload** product stills (`POST {COMFY_BASE_URL}/api/v2/assets` → LoadImage `file_path`)
 2. **Cutout** — `product_cutout.json` (ISNet rembg, open weights)
 3. **Composite** — scale-fit the cutout into the preset insert mask (magenta well → bbox)
 4. **Blend edit** — `flux3_image_edit.json` (default) or `qwen_image_edit_2511.json` (open weights, Lightning 4-step, denoise 0.35)
@@ -84,7 +84,7 @@ API-format graphs live in [`workflows/`](workflows/NODE_MAP.md). The studio orch
 
 **Alt mode:** `minimax_h3_r2v.json` — MiniMax H3 Max reference-to-video with native ASMR audio, citing Image 1…N.
 
-Partner nodes send `extra_data.api_key_comfy_org`. The server polls `GET /api/job/{id}/status` and downloads via `GET /api/view` (follow the 302 without forwarding the key). DynamicCombo fields (LTX / MiniMax `model`) use dotted keys in API format: `"model": "LTX-2.5 (Fast)"`, `"model.duration": "3"`.
+Partner nodes send `extra_data.api_key_comfy_org`. The server authenticates with `Authorization: Bearer`, submits `POST /api/v2/jobs` (`Idempotency-Key`), polls `GET /api/v2/jobs/:id`, and downloads via `GET /api/v2/assets/:id` (signed `url`, fetched without the key). DynamicCombo fields (LTX / MiniMax `model`) use dotted keys in API format: `"model": "LTX-2.5 (Fast)"`, `"model.duration": "3"`.
 
 ### Preset library
 
@@ -104,11 +104,13 @@ npm run generate:presets
 
 ## Demo
 
-A real Comfy run is saved at:
+A real run against the Comfy Build serverless endpoint (`COMFY_BASE_URL`, API v2) is saved at:
 
-- [`demo/unboxing.mp4`](demo/unboxing.mp4) — LTX 2.5 Fast FLF overhead unbox with stereo audio (720×1280, 3s)
+- [`demo/unboxing.mp4`](demo/unboxing.mp4) — LTX 2.5 Fast FLF, 720×1280, 3.04s, H.264 + AAC stereo
 - [`demo/product/`](demo/product/) — five sage ceramic pour-over stills
 - [`demo/kf0_sealed.png`](demo/kf0_sealed.png) / [`demo/kf1_nested.png`](demo/kf1_nested.png)
+
+This run: WAS rembg on the replica stalled (no CPU for 10 minutes). Cutout used a local off-white matte. Composite, FLUX 3 blend edit, and LTX 2.5 Fast 3s first-last-frame ran on the endpoint. Later video frames drifted off true 90° overhead.
 
 ```bash
 npm run generate:demo

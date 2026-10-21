@@ -24,13 +24,12 @@ preset plates (lid / empty / mask) ───────┤
 Comfy client: `src/lib/comfy.ts` and `scripts/comfy_cloud.py`. Talks to a Comfy serverless deployment (Comfy Build spec: [`build/comfy-build.yaml`](build/comfy-build.yaml)).
 
 - Base: `COMFY_BASE_URL` (default `https://cloud.comfy.org`)
-- Auth: `COMFY_API_KEY` as `X-API-Key` — single key, no other env names
+- Auth: `COMFY_API_KEY` as `Authorization: Bearer` — single key, no other env names. Errors pass through `redact()`.
 - Partner nodes: `extra_data.api_key_comfy_org` (same key)
-- Upload: `POST /api/upload/image`
-- Submit: `POST /api/prompt`
-- Poll: `GET /api/job/{id}/status`
-- History: `GET /api/history/{id}`
-- Download: `GET /api/view` then follow the 302 **without** the API key
+- Upload: `POST /api/v2/assets` (multipart `content_type`, `file_path`, `tags=["input"]`, then `file`) → `{id,file_path}` used as LoadImage input
+- Submit: `POST /api/v2/jobs` JSON `{workflow, extra_data}` with `Idempotency-Key`
+- Poll: `GET /api/v2/jobs/:id` → `{status, outputs[{id,name,node_id,type}]}`
+- Download: `GET /api/v2/assets/:id` → `{url}` signed, fetched **without** the API key
 
 DynamicCombo (LTX `model`, MiniMax `model`) on Cloud’s API format uses **dotted keys**: `"model": "LTX-2.5 (Fast)"` plus `"model.duration"`, `"model.resolution"`, … Nested dicts either fail validation or never reach `execute()`.
 
@@ -68,28 +67,29 @@ The generate request is long-running. Keep the Node process alive. Do not deploy
 
 | Path | What |
 | --- | --- |
-| [`demo/unboxing.mp4`](demo/unboxing.mp4) | Real Comfy Cloud LTX 2.5 Fast FLF, 720×1280, 3.04s, H.264 + AAC stereo |
-| [`demo/unboxing_frame.jpg`](demo/unboxing_frame.jpg) | Hands on the sealed kraft mailer |
+| [`demo/unboxing.mp4`](demo/unboxing.mp4) | Real Comfy Build endpoint LTX 2.5 Fast FLF, 720×1280, 3.04s, H.264 + AAC stereo, 945105 bytes |
+| [`demo/unboxing_frame.jpg`](demo/unboxing_frame.jpg) | Overhead, bare hands on kraft tape |
+| [`demo/unboxing_last.jpg`](demo/unboxing_last.jpg) | Open mailer with nested sage dripper (camera drifted off 90°) |
 | [`demo/kf0_sealed.png`](demo/kf0_sealed.png) | Preset lid plate |
 | [`demo/kf1_nested.png`](demo/kf1_nested.png) | FLUX 3 nested keyframe |
-| [`demo/product/`](demo/product/) | Five sage ceramic pour-over stills (FLUX 3) |
+| [`demo/product/`](demo/product/) | Five sage ceramic pour-over stills |
 | [`public/presets/`](public/presets/) | Kraft / rigid / tissue plates + insert masks |
 
-Pipeline that produced the sample:
+Pipeline that produced this sample on the serverless endpoint (API v2):
 
-1. ISNet cutout of `demo/product/01_hero.png`
-2. Magenta-well scale-fit into `public/presets/kraft_mailer/empty.png`
-3. FLUX 3 blend edit → nested keyframe
-4. LTX 2.5 Fast first-last-frame: sealed → nested
+1. WAS rembg job `6466b370-…` ran node 2 (`Image Rembg (Remove Background)`) then failed: *no progress for 10 minutes, log did not grow, almost no CPU*. A second rembg submit was canceled. Cutout used a local off-white matte of `demo/product/01_hero.png`.
+2. Magenta-well scale-fit into `public/presets/kraft_mailer/empty.png` (120904 well hits)
+3. FLUX 3 blend edit job `b2e9e6ae-…` succeeded → `kf1_nested.png`
+4. LTX 2.5 Fast first-last-frame job `bfabd4b4-…` succeeded, 3s 720×1280 with stereo audio
 
 `npm run typecheck` and `npm run build` both succeeded on this tree.
 
 ## Open issues
 
 - Generations need a funded `COMFY_API_KEY`. The client does not read any other key.
-- WAS rembg + `SaveImage` flattened the cutout onto an opaque beige, so the raw composite still showed a studio rectangle. FLUX 3’s blend edit recovered a nested plate.
-- That blend also drifted the dripper toward a ribbed Hario silhouette and slightly off true 90°. Lower denoise / Qwen 2511 is the intended tighter path; it was not used for the sample clip.
+- WAS rembg on this Comfy Build replica stalled with the 10-minute no-progress watchdog. `scripts/e2e_demo.py` falls back to a local off-white matte. The studio pipeline still submits `product_cutout.json`.
+- FLUX 3’s blend edit recovered a nested plate but drifted the camera off true 90° overhead (three-quarter table view). LTX carried that drift into later frames. The first video beat stays overhead.
 - The committed demo is **one** LTX pair (sealed → nested), not the full four-clip concat + RIFE pass. The graphs and orchestrator for the full path are in-repo.
-- MiniMax H3 Max R2V is wired (dotted DynamicCombo + autogrow refs) but was not the clip saved under `demo/` after earlier payload-format misses.
+- MiniMax H3 Max R2V is wired (dotted DynamicCombo + autogrow refs) but was not run for this sample (budget).
 - Magenta chroma-key leaves a pink fringe on some wells; the insert rects in `metadata.json` are the operational crop.
 - No deploy, push, or social post was made.

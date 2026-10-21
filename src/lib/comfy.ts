@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadWorkflow } from "./workflows";
@@ -5,9 +6,25 @@ import { loadWorkflow } from "./workflows";
 const BASE = (process.env.COMFY_BASE_URL || "https://cloud.comfy.org").replace(/\/$/, "");
 
 export type ComfyFile = {
+  id: string;
   filename: string;
-  subfolder?: string;
+  name?: string;
+  node_id?: string;
   type?: string;
+};
+
+export type ComfyJob = {
+  id: string;
+  status: string;
+  error?: unknown;
+  outputs?: Array<{
+    id?: string;
+    asset_id?: string;
+    name?: string;
+    node_id?: string;
+    type?: string;
+    content_type?: string;
+  }>;
 };
 
 function apiKey(): string {
@@ -16,117 +33,100 @@ function apiKey(): string {
   return k;
 }
 
-function jsonHeaders(): Record<string, string> {
-  return { "X-API-Key": apiKey(), "Content-Type": "application/json" };
+/** Strip anything that looks like the key from upstream error text before it reaches logs or clients. */
+export function redact(s: string): string {
+  const k = process.env.COMFY_API_KEY;
+  let out = k ? s.split(k).join("[redacted]") : s;
+  const prefix = "comfy" + "ui-";
+  out = out.replace(new RegExp(`(${prefix}|sk-)[A-Za-z0-9_\\-]{12,}`, "gi"), "[redacted]");
+  return out.slice(0, 600);
 }
 
-async function parseBody(res: Response): Promise<unknown> {
+function guessContentType(filename: string): string {
+  const ext = path.extname(filename).toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".mp4") return "video/mp4";
+  if (ext === ".webm") return "video/webm";
+  return "application/octet-stream";
+}
+
+async function call<T>(method: string, pathname: string, init: { body?: BodyInit; headers?: Record<string, string> } = {}): Promise<T> {
+  const res = await fetch(`${BASE}${pathname}`, {
+    method,
+    body: init.body,
+    headers: { Authorization: `Bearer ${apiKey()}`, ...(init.headers || {}) },
+    cache: "no-store",
+  });
   const text = await res.text();
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
+  if (!res.ok) {
+    throw new Error(`Comfy API ${method} ${pathname.split("?")[0]} -> HTTP ${res.status}: ${redact(text)}`);
   }
-}
-
-export async function comfyFetch(pathname: string, init: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(init.headers);
-  if (!headers.has("X-API-Key") && !headers.has("Authorization")) {
-    headers.set("X-API-Key", apiKey());
-  }
-  return fetch(`${BASE}${pathname}`, { ...init, headers });
+  return (text ? JSON.parse(text) : null) as T;
 }
 
 export async function uploadImage(file: Buffer, filename: string): Promise<string> {
+  const contentType = guessContentType(filename);
   const form = new FormData();
-  form.append("image", new Blob([new Uint8Array(file)]), filename);
-  form.append("type", "input");
-  form.append("overwrite", "true");
-  const res = await fetch(`${BASE}/api/upload/image`, {
-    method: "POST",
-    headers: { "X-API-Key": apiKey() },
-    body: form,
-  });
-  const body = await parseBody(res);
-  if (!res.ok) {
-    throw new Error(`upload failed HTTP ${res.status}: ${JSON.stringify(body)}`);
+  form.append("content_type", contentType);
+  form.append("file_path", filename);
+  form.append("tags", JSON.stringify(["input"]));
+  form.append("file", new Blob([new Uint8Array(file)], { type: contentType }), filename);
+  const asset = await call<{ id?: string; file_path?: string }>("POST", "/api/v2/assets", { body: form });
+  if (!asset.file_path) {
+    throw new Error(`upload missing file_path: ${redact(JSON.stringify(asset))}`);
   }
-  const name = (body as { name?: string }).name;
-  if (!name) throw new Error(`upload missing name: ${JSON.stringify(body)}`);
-  return name;
+  return asset.file_path;
 }
 
-export async function submitWorkflow(
-  workflow: Record<string, unknown>,
-): Promise<string> {
-  const k = apiKey();
+export async function submitWorkflow(workflow: Record<string, unknown>): Promise<string> {
   const payload = {
-    prompt: workflow,
-    extra_data: { api_key_comfy_org: k },
+    workflow,
+    extra_data: { api_key_comfy_org: apiKey() },
   };
-  const res = await fetch(`${BASE}/api/prompt`, {
-    method: "POST",
-    headers: jsonHeaders(),
+  const job = await call<{ id?: string }>("POST", "/api/v2/jobs", {
     body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json", "Idempotency-Key": randomUUID() },
   });
-  const body = await parseBody(res);
-  if (!res.ok) {
-    throw new Error(`submit failed HTTP ${res.status}: ${JSON.stringify(body)}`);
-  }
-  const parsed = body as { prompt_id?: string; node_errors?: unknown };
-  if (parsed.node_errors && JSON.stringify(parsed.node_errors) !== "{}") {
-    throw new Error(`node_errors: ${JSON.stringify(parsed.node_errors)}`);
-  }
-  if (!parsed.prompt_id) throw new Error(`submit missing prompt_id: ${JSON.stringify(body)}`);
-  return parsed.prompt_id;
+  if (!job.id) throw new Error(`submit missing id: ${redact(JSON.stringify(job))}`);
+  return job.id;
 }
 
-const TERMINAL = new Set([
-  "success",
-  "error",
-  "non_retryable_error",
-  "lost",
-  "cancelled",
-  "completed",
-  "failed",
-]);
+export async function getJob(id: string): Promise<ComfyJob> {
+  return call<ComfyJob>("GET", `/api/v2/jobs/${encodeURIComponent(id)}`);
+}
 
 export async function pollStatus(promptId: string): Promise<string> {
-  const res = await comfyFetch(`/api/job/${promptId}/status`);
-  const body = await parseBody(res);
-  if (!res.ok) {
-    throw new Error(`status failed HTTP ${res.status}: ${JSON.stringify(body)}`);
-  }
-  return String((body as { status?: string }).status || "unknown");
+  const job = await getJob(promptId);
+  return job.status || "unknown";
 }
 
-export async function fetchHistory(promptId: string): Promise<unknown> {
-  for (const p of [`/api/history/${promptId}`, `/api/history_v2/${promptId}`, `/api/jobs/${promptId}`]) {
-    const res = await comfyFetch(p);
-    if (res.ok) return parseBody(res);
-  }
-  return {};
+export async function fetchHistory(promptId: string): Promise<ComfyJob> {
+  return getJob(promptId);
 }
+
+const TERMINAL_OK = new Set(["succeeded"]);
+const TERMINAL_BAD = new Set(["failed", "canceled", "cancelled", "expired"]);
 
 export async function waitForJob(
   promptId: string,
   opts: { timeoutMs?: number; onStatus?: (status: string) => void } = {},
-): Promise<unknown> {
+): Promise<ComfyJob> {
   const timeoutMs = opts.timeoutMs ?? 12 * 60_000;
   const start = Date.now();
   let last = "";
   while (Date.now() - start < timeoutMs) {
-    const status = await pollStatus(promptId);
+    const job = await getJob(promptId);
+    const status = job.status || "unknown";
     if (status !== last) {
       opts.onStatus?.(status);
       last = status;
     }
-    if (TERMINAL.has(status)) {
-      const hist = await fetchHistory(promptId);
-      if (["error", "non_retryable_error", "lost", "cancelled", "failed"].includes(status)) {
-        throw new Error(`job ${promptId} ${status}: ${JSON.stringify(hist).slice(0, 4000)}`);
-      }
-      return hist;
+    if (TERMINAL_OK.has(status)) return job;
+    if (TERMINAL_BAD.has(status)) {
+      throw new Error(`job ${promptId} ${status}: ${redact(JSON.stringify(job.error ?? job).slice(0, 4000))}`);
     }
     await new Promise((r) => setTimeout(r, 3000));
   }
@@ -134,70 +134,32 @@ export async function waitForJob(
 }
 
 export function extractFiles(hist: unknown): ComfyFile[] {
+  if (!hist || typeof hist !== "object") return [];
+  const rec = hist as ComfyJob;
+  const outs = rec.outputs;
+  if (!Array.isArray(outs)) return [];
   const files: ComfyFile[] = [];
-  const walk = (node: unknown): void => {
-    if (!node || typeof node !== "object") return;
-    if (Array.isArray(node)) {
-      node.forEach(walk);
-      return;
-    }
-    const rec = node as Record<string, unknown>;
-    for (const key of ["images", "gifs", "video", "videos", "audio"]) {
-      const val = rec[key];
-      if (Array.isArray(val)) {
-        for (const item of val) {
-          if (item && typeof item === "object" && ("filename" in item || "name" in item)) {
-            const f = item as { filename?: string; name?: string; subfolder?: string; type?: string };
-            files.push({
-              filename: f.filename || f.name || "",
-              subfolder: f.subfolder,
-              type: f.type,
-            });
-          }
-        }
-      }
-    }
-    Object.values(rec).forEach(walk);
-  };
-  if (hist && typeof hist === "object" && !Array.isArray(hist)) {
-    const rec = hist as Record<string, unknown>;
-    const keys = Object.keys(rec);
-    if (keys.length === 1) {
-      const only = rec[keys[0]];
-      if (only && typeof only === "object" && ("outputs" in (only as object) || "status" in (only as object))) {
-        walk((only as { outputs?: unknown }).outputs ?? only);
-        return files.filter((f) => f.filename);
-      }
-    }
-    walk(rec.outputs ?? hist);
-  } else {
-    walk(hist);
+  for (const item of outs) {
+    const id = item.id || item.asset_id;
+    if (!id) continue;
+    files.push({
+      id,
+      filename: item.name || id,
+      name: item.name,
+      node_id: item.node_id,
+      type: item.type,
+    });
   }
-  return files.filter((f) => f.filename);
+  return files;
 }
 
 export async function downloadView(file: ComfyFile, dest: string): Promise<Buffer> {
-  const qs = new URLSearchParams({
-    filename: file.filename,
-    subfolder: file.subfolder || "",
-    type: file.type || "output",
-  });
-  const res = await fetch(`${BASE}/api/view?${qs.toString()}`, {
-    headers: { "X-API-Key": apiKey() },
-    redirect: "manual",
-  });
-  let buf: Buffer;
-  if (res.status === 301 || res.status === 302 || res.status === 303 || res.status === 307 || res.status === 308) {
-    const loc = res.headers.get("location");
-    if (!loc) throw new Error("view redirect missing Location");
-    const signed = await fetch(loc);
-    if (!signed.ok) throw new Error(`signed download HTTP ${signed.status}`);
-    buf = Buffer.from(await signed.arrayBuffer());
-  } else if (res.ok) {
-    buf = Buffer.from(await res.arrayBuffer());
-  } else {
-    throw new Error(`view failed HTTP ${res.status}`);
-  }
+  if (!file.id) throw new Error("download missing asset id");
+  const asset = await call<{ url?: string }>("GET", `/api/v2/assets/${encodeURIComponent(file.id)}`);
+  if (!asset.url) throw new Error(`asset ${file.id} missing url`);
+  const signed = await fetch(asset.url);
+  if (!signed.ok) throw new Error(`signed download HTTP ${signed.status}`);
+  const buf = Buffer.from(await signed.arrayBuffer());
   await writeFile(dest, buf);
   return buf;
 }
@@ -211,8 +173,8 @@ export async function runNamedWorkflow(
   const wf = await loadWorkflow(name);
   patch(wf as Record<string, Record<string, unknown>>);
   const promptId = await submitWorkflow(wf);
-  const hist = await waitForJob(promptId, { onStatus });
-  const listed = extractFiles(hist);
+  const job = await waitForJob(promptId, { onStatus });
+  const listed = extractFiles(job);
   const saved: string[] = [];
   for (const [i, file] of listed.entries()) {
     const dest = path.join(outDir, `${i}_${path.basename(file.filename)}`);

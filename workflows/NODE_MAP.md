@@ -1,6 +1,6 @@
 # Workflow node / input map
 
-All graphs under this folder are **API format** (`{ "nodeId": { "class_type", "inputs" } }`), the payload `POST {COMFY_BASE_URL}/api/prompt` expects inside `prompt` (`COMFY_BASE_URL` defaults to `https://cloud.comfy.org`). Partner nodes also need:
+All graphs under this folder are **API format** (`{ "nodeId": { "class_type", "inputs" } }`), the payload `POST {COMFY_BASE_URL}/api/v2/jobs` expects inside `workflow` (`COMFY_BASE_URL` defaults to `https://cloud.comfy.org`). Partner nodes also need:
 
 ```json
 "extra_data": { "api_key_comfy_org": "<COMFY_API_KEY>" }
@@ -18,4 +18,4 @@ DynamicCombo values on Comfy Cloud’s API format use **dotted keys**: `"model":
 | `concat_rife.json` | `ConcatenateVideo` → `GetVideoComponents` → `RIFE VFI` ×2 → `VHS_VideoCombine` 48 fps | `10–13.file` | `50` |
 | `minimax_h3_r2v.json` | `MinimaxHailuo03ReferenceNode` H3 Max 768P 6s → `SaveVideo` | `10–12.image`, `20.model.prompt`, `20.seed` | `30` |
 
-The Next.js orchestrator (`src/lib/pipeline.ts`) loads these files, patches the inputs above, uploads stills with `POST /api/upload/image`, submits, polls `GET /api/job/{id}/status`, then downloads via `GET /api/view` (follow the 302 without forwarding the API key).
+The Next.js orchestrator (`src/lib/pipeline.ts`) loads these files, patches the inputs above, uploads stills with `POST /api/v2/assets` (LoadImage gets the returned `file_path`), submits `POST /api/v2/jobs` with an `Idempotency-Key`, polls `GET /api/v2/jobs/:id`, then downloads via `GET /api/v2/assets/:id` → signed `url` (fetch the signed URL without the API key). Auth is `Authorization: Bearer`.

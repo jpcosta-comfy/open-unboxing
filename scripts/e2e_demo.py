@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""One real end-to-end unboxing on Comfy Cloud. Saves under demo/."""
+"""One real end-to-end unboxing on the Comfy Build serverless endpoint. Saves under demo/."""
 from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from comfy_cloud import download_view, extract_files, run_and_save, submit, upload_image, wait
+from comfy_cloud import redact, run_and_save, upload_image
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "demo"
@@ -18,7 +19,6 @@ PROD = DEMO / "product"
 PRESET = ROOT / "public" / "presets" / "kraft_mailer"
 WF = ROOT / "workflows"
 OUT = DEMO / "run"
-OUT.mkdir(parents=True, exist_ok=True)
 
 
 def load_wf(name: str) -> dict:
@@ -29,6 +29,23 @@ def load_wf(name: str) -> dict:
 
 def is_well(r: int, g: int, b: int) -> bool:
     return r > 180 and g < 110 and (r - g) > 90 and b > 90
+
+
+def local_matte(src: Path, dest: Path) -> None:
+    """Off-white studio-sweep matte used when WAS rembg stalls on the replica."""
+    im = Image.open(src).convert("RGBA")
+    pix = im.load()
+    w, h = im.size
+    cleared = 0
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = pix[x, y]
+            if min(r, g, b) > 200 and (max(r, g, b) - min(r, g, b)) < 40:
+                pix[x, y] = (r, g, b, 0)
+                cleared += 1
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    im.save(dest)
+    print(f"local matte cleared={cleared} size={w}x{h} -> {dest}", flush=True)
 
 
 def nest(empty: Path, product: Path, dest: Path) -> None:
@@ -63,6 +80,39 @@ def nest(empty: Path, product: Path, dest: Path) -> None:
     print(f"nested well hits={hits} at {(minx, miny, maxx, maxy)} -> {dest}")
 
 
+def run_step(label: str, fn):
+    """One try plus up to two retries."""
+    last: Exception | None = None
+    for attempt in range(3):
+        try:
+            print(f"{label} (attempt {attempt + 1}/3)", flush=True)
+            return fn()
+        except Exception as exc:
+            last = exc
+            print(f"  {label} failed: {redact(str(exc))}", flush=True)
+            if attempt == 2:
+                raise
+    assert last is not None
+    raise last
+
+
+def grab_frame(video: Path, dest: Path, when: str) -> None:
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video),
+        "-ss",
+        when,
+        "-frames:v",
+        "1",
+        "-update",
+        "1",
+        str(dest),
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+
+
 def main() -> int:
     hero = PROD / "01_hero.png"
     lid = PRESET / "lid_on.png"
@@ -70,31 +120,36 @@ def main() -> int:
     if not hero.exists() or not lid.exists():
         raise SystemExit("Missing demo product or kraft preset plates.")
 
+    if OUT.exists():
+        shutil.rmtree(OUT)
+    OUT.mkdir(parents=True, exist_ok=True)
+
     cutout = OUT / "cutout.png"
     nested_raw = OUT / "nested_raw.png"
     nested = OUT / "kf1_nested.png"
 
-    if not cutout.exists():
-        print("1. cutout hero")
+    def do_cutout() -> None:
         cut_name = upload_image(hero)
         wf = load_wf("product_cutout.json")
         wf["1"]["inputs"]["image"] = cut_name
         wf["3"]["inputs"]["filename_prefix"] = "ou_demo_cut"
-        cut_files = run_and_save(wf, OUT / "cutout", timeout=420)
+        cut_files = run_and_save(wf, OUT / "cutout", timeout=180)
         if not cut_files:
-            raise SystemExit("cutout produced no image")
+            raise RuntimeError("cutout produced no image")
         shutil.copy(cut_files[0], cutout)
-    else:
-        print("1. cutout hero (cached)")
 
-    if not nested_raw.exists():
-        print("2. composite into kraft insert")
-        nest(empty, cutout, nested_raw)
-    else:
-        print("2. composite (cached)")
+    try:
+        print("1. cutout hero (endpoint rembg, one try)", flush=True)
+        do_cutout()
+    except Exception as exc:
+        print(f"  endpoint rembg failed: {redact(str(exc))}", flush=True)
+        print("1b. local off-white matte", flush=True)
+        local_matte(hero, cutout)
 
-    if not nested.exists():
-        print("3. FLUX 3 blend edit (nested keyframe)")
+    print("2. composite into kraft insert", flush=True)
+    nest(empty, cutout, nested_raw)
+
+    def do_edit() -> None:
         src = upload_image(nested_raw)
         pref = upload_image(cutout)
         wf = load_wf("flux3_image_edit.json")
@@ -109,52 +164,13 @@ def main() -> int:
         wf["2"]["inputs"]["filename_prefix"] = "ou_demo_nested"
         nest_files = run_and_save(wf, OUT / "kf", timeout=420)
         if not nest_files:
-            raise SystemExit("flux3 edit produced no image")
+            raise RuntimeError("flux3 edit produced no image")
         shutil.copy(nest_files[0], nested)
-    else:
-        print("3. FLUX 3 blend edit (cached)")
+
+    run_step("3. FLUX 3 blend edit (nested keyframe)", do_edit)
     shutil.copy(lid, OUT / "kf0_sealed.png")
 
-    print("4. MiniMax H3 Max reference-to-video (native ASMR)")
-    n0 = upload_image(lid)
-    n1 = upload_image(nested)
-    n2 = upload_image(hero)
-    wf = load_wf("minimax_h3_r2v.json")
-    wf["10"]["inputs"]["image"] = n0
-    wf["11"]["inputs"]["image"] = n1
-    wf["12"]["inputs"]["image"] = n2
-    wf["20"]["inputs"]["model"] = "MiniMax H3 Max"
-    wf["20"]["inputs"]["model.prompt"] = (
-        "Locked 90-degree overhead unboxing, one continuous shot, 3:4. "
-        "Image 1 is the sealed unbranded kraft mailer on a pale oak desk. "
-        "Image 2 is the open mailer with the sage ceramic pour-over nested in the insert. "
-        "Image 3 is the product identity — match glaze, cone, and handle exactly. "
-        "Bare adult hands only. Sequence: sealed box, tape peel, lid opens onto the nested product, "
-        "two hands lift and slowly rotate it, set it on the desk beside the open box. "
-        "Native ASMR audio: kraft paper, tape, ceramic tap, quiet room. No music, no voiceover, no logos."
-    )
-    wf["20"]["inputs"]["model.resolution"] = "768P"
-    wf["20"]["inputs"]["model.ratio"] = "3:4"
-    wf["20"]["inputs"]["model.duration"] = 5
-    wf["20"]["inputs"]["model.prompt_expansion_mode"] = "balanced"
-    wf["20"]["inputs"]["model.reference_detail"] = "standard"
-    wf["20"]["inputs"]["model.reference_images"] = {
-        "image_1": ["10", 0],
-        "image_2": ["11", 0],
-        "image_3": ["12", 0],
-    }
-    wf["20"]["inputs"]["seed"] = 2026
-    wf["30"]["inputs"]["filename_prefix"] = "ou_demo_h3"
-    wf["30"]["inputs"]["format"] = "mp4"
-    video = None
-    try:
-        vids = run_and_save(wf, OUT / "video", timeout=900)
-        video = next((p for p in vids if p.suffix.lower() == ".mp4"), vids[0] if vids else None)
-    except Exception as exc:
-        print("H3 failed, falling back to LTX 2.5 FLF:", exc)
-
-    if video is None:
-        print("4b. LTX 2.5 first-last-frame (sealed → nested)")
+    def do_ltx() -> Path:
         a = upload_image(lid)
         b = upload_image(nested)
         wf = load_wf("ltx25_flf2v.json")
@@ -175,13 +191,20 @@ def main() -> int:
         wf["30"]["inputs"]["format"] = "mp4"
         vids = run_and_save(wf, OUT / "video", timeout=900)
         video = next((p for p in vids if p.suffix.lower() == ".mp4"), vids[0] if vids else None)
-    if not video:
-        raise SystemExit("no video from H3 or LTX")
+        if not video:
+            raise RuntimeError("LTX produced no video")
+        return video
+
+    video = run_step("4. LTX 2.5 first-last-frame 3s (sealed → nested)", do_ltx)
     final = DEMO / "unboxing.mp4"
     shutil.copy(video, final)
-    # also keep keyframes at demo root
     shutil.copy(OUT / "kf0_sealed.png", DEMO / "kf0_sealed.png")
     shutil.copy(nested, DEMO / "kf1_nested.png")
+    try:
+        grab_frame(final, DEMO / "unboxing_frame.jpg", "0.3")
+        grab_frame(final, DEMO / "unboxing_last.jpg", "2.7")
+    except Exception as exc:
+        print(f"frame grab skipped: {redact(str(exc))}", flush=True)
     print("SAVED", final)
     print("bytes", final.stat().st_size)
     return 0
