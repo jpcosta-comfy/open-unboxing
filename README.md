@@ -104,13 +104,14 @@ npm run generate:presets
 
 ## Demo
 
-A real run against the Comfy Build serverless endpoint (`COMFY_BASE_URL`, API v2) is saved at:
+A real run against the Comfy Build serverless endpoint (`COMFY_BASE_URL`, API v2, release **`69e82472-1206-473f-851e-286c5fcb2480`**) is saved at:
 
-- [`demo/unboxing.mp4`](demo/unboxing.mp4) — LTX 2.5 Fast FLF, 720×1280, 3.04s, H.264 + AAC stereo
+- [`demo/unboxing.mp4`](demo/unboxing.mp4) — LTX 2.5 Fast FLF + core RIFE ×2, 720×1280, 48 fps, 3.02s, H.264 + AAC stereo
+- [`demo/unboxing_frame.jpg`](demo/unboxing_frame.jpg) / [`demo/unboxing_mid.jpg`](demo/unboxing_mid.jpg) / [`demo/unboxing_last.jpg`](demo/unboxing_last.jpg) — start / 1.5s / end
 - [`demo/product/`](demo/product/) — five sage ceramic pour-over stills
 - [`demo/kf0_sealed.png`](demo/kf0_sealed.png) / [`demo/kf1_nested.png`](demo/kf1_nested.png)
 
-The committed `demo/unboxing.mp4` is an earlier endpoint run (LTX 2.5 Fast FLF, 3.04s). Cutout and RIFE graphs have since moved to core BiRefNet + core RIFE 4.26; this tree was not regenerated. `scripts/e2e_demo.py` now runs cutout on the endpoint (no local matte fallback) and finishes with a RIFE ×2 pass. LTX prompts lock a static 90° overhead camera.
+Every model step ran on the endpoint (core BiRefNet cutout, FLUX 3 nested keyframe, LTX 2.5 FLF, core RIFE ×2). No local matte or local interpolation. Start and mid frames are locked 90° overhead; the end frame stays overhead and matches the nested keyframe. Details and job ids: [`demo/README.md`](demo/README.md), [`REPORT.md`](REPORT.md).
 
 ```bash
 npm run generate:demo

@@ -4,7 +4,7 @@
     "purpose": "Stitch LTX clips with core ConcatenateVideo, then double the frame rate with core RIFE (rife_v4.26.safetensors). CreateVideo fps is 48 (LTX 24 × multiplier 2) and audio is passed through from GetVideoComponents.",
     "inputs": {
       "10.file / 11.file / 12.file / 13.file": "MP4 asset file_path values from LTX clips",
-      "20.videos.video1..video4": "ConcatenateVideo autogrow",
+      "20.videos.video0..video3": "ConcatenateVideo autogrow (0-indexed)",
       "40.model_name": "rife_v4.26.safetensors (models/frame_interpolation)",
       "50.multiplier": 2,
       "60.fps": 48
@@ -35,10 +35,10 @@
     "class_type": "ConcatenateVideo",
     "inputs": {
       "videos": {
-        "video1": ["10", 0],
-        "video2": ["11", 0],
-        "video3": ["12", 0],
-        "video4": ["13", 0]
+        "video0": ["10", 0],
+        "video1": ["11", 0],
+        "video2": ["12", 0],
+        "video3": ["13", 0]
       },
       "codec": "auto"
     },

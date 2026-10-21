@@ -146,7 +146,7 @@ async function concatRife(opts: { jobId: string; clips: string[] }): Promise<str
       for (let i = 0; i < names.length; i++) {
         const id = String(10 + i);
         setInput(wf, id, "file", names[i]);
-        videos[`video${i + 1}`] = [id, 0];
+        videos[`video${i}`] = [id, 0];
       }
       for (let i = names.length; i < 4; i++) {
         delete wf[String(10 + i)];

@@ -67,17 +67,32 @@ def nest(empty: Path, product: Path, dest: Path) -> None:
     print(f"nested well hits={hits} at {(minx, miny, maxx, maxy)} -> {dest}")
 
 
+def pad_to_916(src: Path, dest: Path) -> None:
+    """Letterbox a 3:4 overhead plate into 9:16 without changing camera."""
+    im = Image.open(src).convert("RGB")
+    w, h = im.size
+    target_h = max(h, int(round(w * 16 / 9)))
+    if target_h == h:
+        im.save(dest, "PNG")
+        return
+    canvas = Image.new("RGB", (w, target_h), im.getpixel((0, 0)))
+    canvas.paste(im, (0, (target_h - h) // 2))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(dest, "PNG")
+    print(f"pad 9:16 {w}x{h} -> {w}x{target_h} {dest}", flush=True)
+
+
 def run_step(label: str, fn):
-    """One try plus up to two retries."""
+    """At most two attempts per step."""
     last: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(2):
         try:
-            print(f"{label} (attempt {attempt + 1}/3)", flush=True)
+            print(f"{label} (attempt {attempt + 1}/2)", flush=True)
             return fn()
         except Exception as exc:
             last = exc
             print(f"  {label} failed: {redact(str(exc))}", flush=True)
-            if attempt == 2:
+            if attempt == 1:
                 raise
     assert last is not None
     raise last
@@ -137,10 +152,10 @@ def main() -> int:
         wf["10"]["inputs"]["image"] = src
         wf["11"]["inputs"]["image"] = pref
         wf["1"]["inputs"]["prompt"] = (
-            "Locked-off static top-down overhead camera, 90 degrees, no camera movement, no tilt, no zoom. "
-            "Image 1 is a strict 90-degree overhead plate. Nest the exact sage ceramic pour-over "
-            "from image 2 into the insert well so it looks physically present: contact shadow, "
-            "correct scale, matching daylight. Do not change camera, desk, or the unbranded kraft box. No hands."
+            "TRUE 90-degree top-down overhead photograph, camera locked on the ceiling looking straight down. "
+            "The open kraft mailer is a flat rectangle in frame; the inner lid is a flat cardboard plane, not a perspective trapezoid. "
+            "No three-quarter view, no tilt, no dutch angle, no zoom. Keep image 1's crop and desk. "
+            "Nest the exact sage ceramic pour-over from image 2 into the insert well with a contact shadow. No hands."
         )
         wf["1"]["inputs"]["seed"] = 2026
         wf["2"]["inputs"]["filename_prefix"] = "ou_demo_nested"
@@ -151,10 +166,14 @@ def main() -> int:
 
     run_step("3. FLUX 3 blend edit (nested keyframe)", do_edit)
     shutil.copy(lid, OUT / "kf0_sealed.png")
+    kf0_916 = OUT / "kf0_916.png"
+    kf1_916 = OUT / "kf1_916.png"
+    pad_to_916(OUT / "kf0_sealed.png", kf0_916)
+    pad_to_916(nested, kf1_916)
 
-    def do_ltx() -> Path:
-        a = upload_image(lid)
-        b = upload_image(nested)
+    def do_ltx(first: Path, last: Path, seed: int, prompt: str, tag: str) -> Path:
+        a = upload_image(first)
+        b = upload_image(last)
         wf = load_wf("ltx25_flf2v.json")
         wf["10"]["inputs"]["image"] = a
         wf["11"]["inputs"]["image"] = b
@@ -163,30 +182,36 @@ def main() -> int:
         wf["20"]["inputs"]["model.resolution"] = "720x1280"
         wf["20"]["inputs"]["model.fps"] = "24"
         wf["20"]["inputs"]["model.generate_audio"] = True
-        wf["20"]["inputs"]["prompt"] = (
-            "Locked-off static top-down overhead camera, 90 degrees, no camera movement, no tilt, no zoom, no dolly. "
-            "Both keyframes are strict 90-degree overhead plates. Only hands move. "
-            "Bare adult hands peel kraft tape and open the mailer lid, revealing the sage ceramic pour-over "
-            "nested in the insert. Slow ASMR, paper and tape, no faces, no logos, no music."
-        )
-        wf["20"]["inputs"]["seed"] = 2026
-        wf["30"]["inputs"]["filename_prefix"] = "ou_demo_ltx"
+        wf["20"]["inputs"]["prompt"] = prompt
+        wf["20"]["inputs"]["seed"] = seed
+        wf["30"]["inputs"]["filename_prefix"] = f"ou_demo_ltx_{tag}"
         wf["30"]["inputs"]["format"] = "mp4"
-        vids = run_and_save(wf, OUT / "video", timeout=900)
-        video = next((p for p in vids if p.suffix.lower() == ".mp4"), vids[0] if vids else None)
-        if not video:
+        vids = run_and_save(wf, OUT / "video" / tag, timeout=900)
+        clip = next((p for p in vids if p.suffix.lower() == ".mp4"), vids[0] if vids else None)
+        if not clip:
             raise RuntimeError("LTX produced no video")
-        return video
+        return clip
 
-    video = run_step("4. LTX 2.5 first-last-frame 3s (sealed → nested)", do_ltx)
+    LTX_PROMPT = (
+        "Locked-off static top-down overhead camera, 90 degrees, no camera movement, no tilt, no zoom, no dolly, no push-in. "
+        "The camera is bolted to the ceiling. Both keyframes share identical framing and scale; only hands and the lid move. "
+        "Do not orbit, do not lower the camera, do not show a three-quarter table view. "
+        "Bare adult hands peel kraft tape and open the mailer lid, revealing the sage ceramic pour-over nested in the insert. "
+        "Slow ASMR, paper and tape, no faces, no logos, no music."
+    )
+
+    video = run_step(
+        "4. LTX 2.5 first-last-frame 3s (sealed → nested)",
+        lambda: do_ltx(kf0_916, kf1_916, 2026, LTX_PROMPT, "a"),
+    )
 
     def do_rife() -> Path:
         vname = upload_image(video)
         wf = load_wf("concat_rife.json")
-        for extra in ("11", "12", "13"):
+        for extra in ("11", "12", "13", "20"):
             wf.pop(extra, None)
         wf["10"]["inputs"]["file"] = vname
-        wf["20"]["inputs"]["videos"] = {"video1": ["10", 0]}
+        wf["30"]["inputs"]["video"] = ["10", 0]
         wf["70"]["inputs"]["filename_prefix"] = "ou_demo_rife"
         vids = run_and_save(wf, OUT / "rife", timeout=600)
         out = next((p for p in vids if p.suffix.lower() == ".mp4"), vids[0] if vids else None)
@@ -200,8 +225,9 @@ def main() -> int:
     shutil.copy(OUT / "kf0_sealed.png", DEMO / "kf0_sealed.png")
     shutil.copy(nested, DEMO / "kf1_nested.png")
     try:
-        grab_frame(final, DEMO / "unboxing_frame.jpg", "0.3")
-        grab_frame(final, DEMO / "unboxing_last.jpg", "2.7")
+        grab_frame(final, DEMO / "unboxing_frame.jpg", "0.08")
+        grab_frame(final, DEMO / "unboxing_mid.jpg", "1.5")
+        grab_frame(final, DEMO / "unboxing_last.jpg", "2.85")
     except Exception as exc:
         print(f"frame grab skipped: {redact(str(exc))}", flush=True)
     print("SAVED", final)

@@ -19,7 +19,7 @@ Cutout and RIFE use **core** nodes only (no WAS, no Frame-Interpolation pack, no
 | `qwen_image_edit_2511.json` | `UNETLoader` `qwen_image_edit_2511_fp8mixed` + Lightning LoRA + `TextEncodeQwenImageEditPlus` + `KSampler` denoise 0.35 | `10.image`, `31.prompt`, `40.denoise`, `40.seed` | `51` |
 | `product_cutout.json` | `LoadBackgroundRemovalModel` `birefnet.safetensors` → `RemoveBackground` → `InvertMask` → `JoinImageWithAlpha` → `SaveImage` | `1.image` | `6` |
 | `ltx25_flf2v.json` | `LtxApi25ImageToVideo` (Fast, 720×1280, 3s, audio on) → `SaveVideo` | `10.image`, `11.image`, `20.prompt`, `20.seed`, `20.model.duration` | `30` |
-| `concat_rife.json` | `LoadVideo` ×4 → `ConcatenateVideo` → `GetVideoComponents` → `FrameInterpolationModelLoader` `rife_v4.26.safetensors` → `FrameInterpolate` ×2 → `CreateVideo` 48 fps + audio → `SaveVideo` | `10–13.file` | `70` |
+| `concat_rife.json` | `LoadVideo` ×4 → `ConcatenateVideo` (`videos.video0`–`video3`, 0-indexed autogrow) → `GetVideoComponents` → `FrameInterpolationModelLoader` `rife_v4.26.safetensors` → `FrameInterpolate` ×2 → `CreateVideo` 48 fps + audio → `SaveVideo` | `10–13.file` | `70` |
 | `minimax_h3_r2v.json` | `MinimaxHailuo03ReferenceNode` H3 Max 768P 6s → `SaveVideo` | `10–12.image`, `20.model.prompt`, `20.seed` | `30` |
 
 The Next.js orchestrator (`src/lib/pipeline.ts`) loads these files, patches the inputs above, uploads stills and clips with `POST /api/v2/assets` (LoadImage / LoadVideo get the returned `file_path`), submits `POST /api/v2/jobs` with an `Idempotency-Key`, polls `GET /api/v2/jobs/:id`, then downloads via `GET /api/v2/assets/:id` → signed `url` (fetch the signed URL without the API key). Auth is `Authorization: Bearer`.

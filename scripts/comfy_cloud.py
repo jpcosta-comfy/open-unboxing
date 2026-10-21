@@ -130,7 +130,9 @@ def wait(prompt_id: str, timeout: int = 600, interval: float = 3.0) -> dict[str,
         job = get_job(prompt_id)
         st = str(job.get("status") or "unknown")
         if st != last:
-            print(f"  [{prompt_id[:8]}] {st}", flush=True)
+            rel = job.get("release_id") or job.get("release_version") or ""
+            extra = f" release={rel}" if rel else ""
+            print(f"  [{prompt_id[:8]}] {st}{extra}", flush=True)
             last = st
         if st in ok:
             return job
