@@ -1,6 +1,5 @@
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { downloadView, extractFiles, runNamedWorkflow, submitWorkflow, uploadImage, waitForJob } from "./comfy";
 import {
   applyLogoToLid,
@@ -29,30 +28,6 @@ function work(jobId: string, ...parts: string[]): string {
   return path.join(jobDir(jobId), ...parts);
 }
 
-async function ffmpegConcat(clips: string[], dest: string): Promise<void> {
-  const list = work(path.basename(path.dirname(dest)), "work", "concat.txt");
-  // list lives next to clips
-  const listPath = path.join(path.dirname(clips[0]), "concat.txt");
-  const body = clips.map((c) => `file '${c.replace(/'/g, `'\\''`)}'`).join("\n") + "\n";
-  await writeFile(listPath, body);
-  await new Promise<void>((resolve, reject) => {
-    const ff = spawn(
-      "ffmpeg",
-      ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", dest],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
-    let err = "";
-    ff.stderr.on("data", (d: Buffer) => {
-      err += d.toString();
-    });
-    ff.on("exit", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`ffmpeg concat failed (${code}): ${err.slice(-1500)}`));
-    });
-  });
-  void list;
-}
-
 async function cutoutPhoto(jobId: string, localPath: string, index: number): Promise<string> {
   const uploaded = await uploadImage(await readFile(localPath), `prod_${index}${path.extname(localPath) || ".png"}`);
   const destDir = work(jobId, "work");
@@ -60,7 +35,7 @@ async function cutoutPhoto(jobId: string, localPath: string, index: number): Pro
     "product_cutout",
     (wf) => {
       setInput(wf, "1", "image", uploaded);
-      setInput(wf, "3", "filename_prefix", `ou_${jobId.slice(0, 8)}_cut_${index}`);
+      setInput(wf, "6", "filename_prefix", `ou_${jobId.slice(0, 8)}_cut_${index}`);
     },
     destDir,
   );
@@ -154,6 +129,39 @@ async function ltxClip(opts: {
   const video = files.find((f) => f.endsWith(".mp4")) ?? files[0];
   if (!video) throw new Error(`ltx ${opts.name} produced no video`);
   const dest = work(opts.jobId, "out", `${opts.name}.mp4`);
+  await copyFile(video, dest);
+  return dest;
+}
+
+async function concatRife(opts: { jobId: string; clips: string[] }): Promise<string> {
+  const destDir = work(opts.jobId, "work");
+  const names: string[] = [];
+  for (const [i, c] of opts.clips.entries()) {
+    names.push(await uploadImage(await readFile(c), `clip_${i}.mp4`));
+  }
+  const { files } = await runNamedWorkflow(
+    "concat_rife",
+    (wf) => {
+      const videos: Record<string, [string, number]> = {};
+      for (let i = 0; i < names.length; i++) {
+        const id = String(10 + i);
+        setInput(wf, id, "file", names[i]);
+        videos[`video${i + 1}`] = [id, 0];
+      }
+      for (let i = names.length; i < 4; i++) {
+        delete wf[String(10 + i)];
+      }
+      const node = wf["20"];
+      const inputs = (node.inputs ?? {}) as Record<string, unknown>;
+      inputs.videos = videos;
+      node.inputs = inputs;
+      setInput(wf, "70", "filename_prefix", `ou_${opts.jobId.slice(0, 8)}`);
+    },
+    destDir,
+  );
+  const video = files.find((f) => f.endsWith(".mp4")) ?? files[0];
+  if (!video) throw new Error("concat_rife produced no video");
+  const dest = work(opts.jobId, "out", "unboxing.mp4");
   await copyFile(video, dest);
   return dest;
 }
@@ -332,13 +340,8 @@ export async function runPipeline(input: PipelineInput): Promise<void> {
       await patchJob(jobId, "animate", `Clip ${i + 1}/4 ready.`);
     }
 
-    await patchJob(
-      jobId,
-      "concat",
-      "Concatenating LTX clips with ffmpeg. The Cloud graph in workflows/concat_rife.json is the RIFE path when clips already live on Comfy.",
-    );
-    const dest = work(jobId, "out", "unboxing.mp4");
-    await ffmpegConcat(clips, dest);
+    await patchJob(jobId, "concat", "Concatenating LTX clips and RIFE ×2 on the endpoint.");
+    const dest = await concatRife({ jobId, clips });
 
     await patchJob(jobId, "done", "Unboxing is ready.", {
       outputRelpath: path.relative(process.cwd(), dest),

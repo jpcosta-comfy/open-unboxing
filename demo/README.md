@@ -4,11 +4,8 @@ This clip was generated on the **Comfy Build serverless endpoint** (`COMFY_BASE_
 
 Product stills in `product/` are unbranded sage ceramic pour-over shots (five angles).
 
-The unboxing cut `unboxing.mp4` is a real endpoint run against the kraft mailer preset:
+The committed `unboxing.mp4` is an earlier endpoint run against the kraft mailer preset (LTX 2.5 Fast FLF, 720×1280, 3.04s, H.264 + AAC stereo). Cutout on that run used a local off-white matte after WAS rembg stalled.
 
-1. Cutout — WAS rembg (`Image Rembg`) on the replica stalled (node 2, no CPU / no log growth for 10 minutes) and was marked failed. The demo used a local off-white studio-sweep matte of `product/01_hero.png`.
-2. Scale-fit into the magenta insert well
-3. FLUX 3 blend edit → nested keyframe (`kf1_nested.png`)
-4. LTX 2.5 Fast first-last-frame (sealed plate → nested plate), 720×1280, 3.04s, H.264 + AAC stereo
+Workflows have since moved to **core** nodes only (`build/comfy-build.yaml`): BiRefNet cutout (`birefnet.safetensors`) and RIFE 4.26 (`rife_v4.26.safetensors`). `scripts/e2e_demo.py` now requires cutout on the endpoint (no local matte) and finishes with a core RIFE ×2 pass. This folder was not regenerated in that code-only change.
 
-Keyframes: `kf0_sealed.png`, `kf1_nested.png`. Stills from the clip: `unboxing_frame.jpg` (overhead, hands on kraft tape), `unboxing_last.jpg` (open box with nested dripper). LTX drifted the later frames off true 90° overhead toward a three-quarter table view.
+Keyframes: `kf0_sealed.png`, `kf1_nested.png`. Stills from the committed clip: `unboxing_frame.jpg` (overhead, hands on kraft tape), `unboxing_last.jpg` (open box with nested dripper; camera drifted off 90° on that older run).

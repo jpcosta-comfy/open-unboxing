@@ -75,12 +75,12 @@ comfy deploy stop build/
 API-format graphs live in [`workflows/`](workflows/NODE_MAP.md). The studio orchestrates them:
 
 1. **Upload** product stills (`POST {COMFY_BASE_URL}/api/v2/assets` → LoadImage `file_path`)
-2. **Cutout** — `product_cutout.json` (ISNet rembg, open weights)
+2. **Cutout** — `product_cutout.json` (core BiRefNet: `LoadBackgroundRemovalModel` → `RemoveBackground` → `InvertMask` → `JoinImageWithAlpha`)
 3. **Composite** — scale-fit the cutout into the preset insert mask (magenta well → bbox)
 4. **Blend edit** — `flux3_image_edit.json` (default) or `qwen_image_edit_2511.json` (open weights, Lightning 4-step, denoise 0.35)
-5. **Five overhead keyframes** — sealed, nested, lift, rotate, table
-6. **Animate pairs** — `ltx25_flf2v.json` (LTX 2.5 Fast, first-last-frame, 720×1280, 3s, audio on)
-7. **Concat** — ffmpeg; Cloud graph `concat_rife.json` is RIFE ×2 + H.264
+5. **Five overhead keyframes** — sealed, nested, lift, rotate, table (strict 90° overhead)
+6. **Animate pairs** — `ltx25_flf2v.json` (LTX 2.5 Fast, first-last-frame, 720×1280, 3s, audio on; locked-off static overhead camera, only hands move)
+7. **Concat + RIFE** — `concat_rife.json` (core `ConcatenateVideo` → `FrameInterpolate` ×2 with `rife_v4.26.safetensors` → `CreateVideo` 48 fps, audio kept)
 
 **Alt mode:** `minimax_h3_r2v.json` — MiniMax H3 Max reference-to-video with native ASMR audio, citing Image 1…N.
 
@@ -110,7 +110,7 @@ A real run against the Comfy Build serverless endpoint (`COMFY_BASE_URL`, API v2
 - [`demo/product/`](demo/product/) — five sage ceramic pour-over stills
 - [`demo/kf0_sealed.png`](demo/kf0_sealed.png) / [`demo/kf1_nested.png`](demo/kf1_nested.png)
 
-This run: WAS rembg on the replica stalled (no CPU for 10 minutes). Cutout used a local off-white matte. Composite, FLUX 3 blend edit, and LTX 2.5 Fast 3s first-last-frame ran on the endpoint. Later video frames drifted off true 90° overhead.
+The committed `demo/unboxing.mp4` is an earlier endpoint run (LTX 2.5 Fast FLF, 3.04s). Cutout and RIFE graphs have since moved to core BiRefNet + core RIFE 4.26; this tree was not regenerated. `scripts/e2e_demo.py` now runs cutout on the endpoint (no local matte fallback) and finishes with a RIFE ×2 pass. LTX prompts lock a static 90° overhead camera.
 
 ```bash
 npm run generate:demo

@@ -1,16 +1,15 @@
 {
   "_meta": {
-    "name": "Concat + RIFE",
-    "purpose": "Stitch LTX clips then double the frame rate with RIFE VFI (open weights). Patch LoadVideo filenames to the clips produced by ltx25_flf2v.",
+    "name": "Concat + core RIFE 4.26",
+    "purpose": "Stitch LTX clips with core ConcatenateVideo, then double the frame rate with core RIFE (rife_v4.26.safetensors). CreateVideo fps is 48 (LTX 24 × multiplier 2) and audio is passed through from GetVideoComponents.",
     "inputs": {
-      "10.file / 11.file / 12.file / 13.file": "MP4 filenames already in Comfy input storage",
+      "10.file / 11.file / 12.file / 13.file": "MP4 asset file_path values from LTX clips",
       "20.videos.video1..video4": "ConcatenateVideo autogrow",
-      "40.ckpt_name": "rife49.pth | rife47.pth | rife426.pth",
-      "40.multiplier": "2",
-      "50.format": "video/h264-mp4",
-      "50.frame_rate": "48 (24×2)"
+      "40.model_name": "rife_v4.26.safetensors (models/frame_interpolation)",
+      "50.multiplier": 2,
+      "60.fps": 48
     },
-    "outputs": { "50": "VHS_VideoCombine MP4" }
+    "outputs": { "70": "SaveVideo MP4" }
   },
   "10": {
     "class_type": "LoadVideo",
@@ -48,39 +47,38 @@
   "30": {
     "class_type": "GetVideoComponents",
     "inputs": { "video": ["20", 0] },
-    "_meta": { "title": "Frames" }
+    "_meta": { "title": "Frames + audio + fps" }
   },
   "40": {
-    "class_type": "RIFE VFI",
+    "class_type": "FrameInterpolationModelLoader",
+    "inputs": { "model_name": "rife_v4.26.safetensors" },
+    "_meta": { "title": "RIFE 4.26" }
+  },
+  "50": {
+    "class_type": "FrameInterpolate",
     "inputs": {
-      "ckpt_name": "rife49.pth",
-      "frames": ["30", 0],
-      "clear_cache_after_n_frames": 10,
-      "multiplier": 2,
-      "fast_mode": true,
-      "ensemble": true,
-      "scale_factor": 1.0,
-      "dtype": "float32",
-      "torch_compile": false,
-      "batch_size": 1
+      "interp_model": ["40", 0],
+      "images": ["30", 0],
+      "multiplier": 2
     },
     "_meta": { "title": "RIFE ×2" }
   },
-  "50": {
-    "class_type": "VHS_VideoCombine",
+  "60": {
+    "class_type": "CreateVideo",
     "inputs": {
-      "images": ["40", 0],
-      "frame_rate": 48,
-      "loop_count": 0,
-      "filename_prefix": "ou_unboxing",
-      "format": "video/h264-mp4",
-      "pingpong": false,
-      "save_output": true,
-      "pix_fmt": "yuv420p",
-      "crf": 19,
-      "save_metadata": true,
-      "trim_to_audio": false
+      "images": ["50", 0],
+      "fps": 48.0,
+      "audio": ["30", 1]
     },
-    "_meta": { "title": "Save H.264" }
+    "_meta": { "title": "48 fps + original audio" }
+  },
+  "70": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["60", 0],
+      "filename_prefix": "ou_unboxing",
+      "format": "mp4"
+    },
+    "_meta": { "title": "Save Video" }
   }
 }

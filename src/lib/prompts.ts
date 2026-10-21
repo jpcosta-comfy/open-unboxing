@@ -1,7 +1,7 @@
 /** Locked-camera overhead language shared across keyframe edits and video models. */
 
 export const OVERHEAD =
-  "Locked 90-degree top-down overhead camera, no tilt, no cut, pale oak desk, even daylight.";
+  "Locked-off static top-down overhead camera, 90 degrees, no camera movement, no tilt, no zoom, no dolly, no cut. Only hands move. Both plates are strict 90-degree overhead. Pale oak desk, even daylight.";
 
 export const NO_BRAND =
   "No logos, no text, no barcodes, no watermarks, no faces, no torsos. Bare adult hands only when the beat requires them.";
@@ -23,7 +23,7 @@ export function tablePrompt(): string {
 }
 
 export function ltxPairPrompt(fromBeat: string, toBeat: string): string {
-  return `${OVERHEAD} One continuous real-time shot. Bare adult hands only. Motion carries the scene from "${fromBeat}" to "${toBeat}". Slow ASMR pacing, no jump cuts, no morphing logos. Audio: close-mic paper, tape, ceramic, quiet room tone. No music, no voiceover. ${NO_BRAND}`;
+  return `${OVERHEAD} One continuous real-time shot. The camera is locked off: no pan, tilt, zoom, or push-in. Only hands move. Motion carries the scene from "${fromBeat}" to "${toBeat}". Slow ASMR pacing, no jump cuts, no morphing logos. Audio: close-mic paper, tape, ceramic, quiet room tone. No music, no voiceover. ${NO_BRAND}`;
 }
 
 export const LTX_BEATS = [

@@ -35,7 +35,7 @@
       "model.resolution": "720x1280",
       "model.fps": "24",
       "model.generate_audio": true,
-      "prompt": "Locked overhead camera, no cut. Bare adult hands enter from the bottom of frame and perform a slow ASMR unboxing motion that carries the scene from the first still to the last still. Fingers only, no faces, no torsos. Paper fiber, tape, and ceramic. Audio: close-mic paper, tape peel, soft ceramic tap, quiet room tone. No music, no voiceover, no logos.",
+      "prompt": "Locked-off static top-down overhead camera, 90 degrees, no camera movement, no tilt, no zoom, no dolly, no cut. Both keyframes are strict 90-degree overhead plates. Only hands move. Bare adult hands enter from the bottom of frame and perform a slow ASMR unboxing motion that carries the scene from the first still to the last still. Fingers only, no faces, no torsos. Paper fiber, tape, and ceramic. Audio: close-mic paper, tape peel, soft ceramic tap, quiet room tone. No music, no voiceover, no logos.",
       "seed": 42
     },
     "_meta": { "title": "LTX 2.5 FLF2V" }

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""One real end-to-end unboxing on the Comfy Build serverless endpoint. Saves under demo/."""
+"""One real end-to-end unboxing on the Comfy Build serverless endpoint. Saves under demo/.
+
+Cutout runs on the endpoint (core BiRefNet). No local matte fallback.
+Finishes with core RIFE ×2 (48 fps, original audio).
+"""
 from __future__ import annotations
 
 import json
@@ -29,23 +33,6 @@ def load_wf(name: str) -> dict:
 
 def is_well(r: int, g: int, b: int) -> bool:
     return r > 180 and g < 110 and (r - g) > 90 and b > 90
-
-
-def local_matte(src: Path, dest: Path) -> None:
-    """Off-white studio-sweep matte used when WAS rembg stalls on the replica."""
-    im = Image.open(src).convert("RGBA")
-    pix = im.load()
-    w, h = im.size
-    cleared = 0
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = pix[x, y]
-            if min(r, g, b) > 200 and (max(r, g, b) - min(r, g, b)) < 40:
-                pix[x, y] = (r, g, b, 0)
-                cleared += 1
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    im.save(dest)
-    print(f"local matte cleared={cleared} size={w}x{h} -> {dest}", flush=True)
 
 
 def nest(empty: Path, product: Path, dest: Path) -> None:
@@ -132,19 +119,13 @@ def main() -> int:
         cut_name = upload_image(hero)
         wf = load_wf("product_cutout.json")
         wf["1"]["inputs"]["image"] = cut_name
-        wf["3"]["inputs"]["filename_prefix"] = "ou_demo_cut"
-        cut_files = run_and_save(wf, OUT / "cutout", timeout=180)
+        wf["6"]["inputs"]["filename_prefix"] = "ou_demo_cut"
+        cut_files = run_and_save(wf, OUT / "cutout", timeout=600)
         if not cut_files:
             raise RuntimeError("cutout produced no image")
         shutil.copy(cut_files[0], cutout)
 
-    try:
-        print("1. cutout hero (endpoint rembg, one try)", flush=True)
-        do_cutout()
-    except Exception as exc:
-        print(f"  endpoint rembg failed: {redact(str(exc))}", flush=True)
-        print("1b. local off-white matte", flush=True)
-        local_matte(hero, cutout)
+    run_step("1. cutout hero (endpoint BiRefNet)", do_cutout)
 
     print("2. composite into kraft insert", flush=True)
     nest(empty, cutout, nested_raw)
@@ -156,7 +137,8 @@ def main() -> int:
         wf["10"]["inputs"]["image"] = src
         wf["11"]["inputs"]["image"] = pref
         wf["1"]["inputs"]["prompt"] = (
-            "Using image 1 as the locked overhead plate, nest the exact sage ceramic pour-over "
+            "Locked-off static top-down overhead camera, 90 degrees, no camera movement, no tilt, no zoom. "
+            "Image 1 is a strict 90-degree overhead plate. Nest the exact sage ceramic pour-over "
             "from image 2 into the insert well so it looks physically present: contact shadow, "
             "correct scale, matching daylight. Do not change camera, desk, or the unbranded kraft box. No hands."
         )
@@ -182,9 +164,10 @@ def main() -> int:
         wf["20"]["inputs"]["model.fps"] = "24"
         wf["20"]["inputs"]["model.generate_audio"] = True
         wf["20"]["inputs"]["prompt"] = (
-            "Locked overhead camera. Bare adult hands peel kraft tape and open the mailer lid, "
-            "revealing the sage ceramic pour-over nested in the insert. Slow ASMR, paper and tape, "
-            "no faces, no logos, no music."
+            "Locked-off static top-down overhead camera, 90 degrees, no camera movement, no tilt, no zoom, no dolly. "
+            "Both keyframes are strict 90-degree overhead plates. Only hands move. "
+            "Bare adult hands peel kraft tape and open the mailer lid, revealing the sage ceramic pour-over "
+            "nested in the insert. Slow ASMR, paper and tape, no faces, no logos, no music."
         )
         wf["20"]["inputs"]["seed"] = 2026
         wf["30"]["inputs"]["filename_prefix"] = "ou_demo_ltx"
@@ -196,6 +179,22 @@ def main() -> int:
         return video
 
     video = run_step("4. LTX 2.5 first-last-frame 3s (sealed → nested)", do_ltx)
+
+    def do_rife() -> Path:
+        vname = upload_image(video)
+        wf = load_wf("concat_rife.json")
+        for extra in ("11", "12", "13"):
+            wf.pop(extra, None)
+        wf["10"]["inputs"]["file"] = vname
+        wf["20"]["inputs"]["videos"] = {"video1": ["10", 0]}
+        wf["70"]["inputs"]["filename_prefix"] = "ou_demo_rife"
+        vids = run_and_save(wf, OUT / "rife", timeout=600)
+        out = next((p for p in vids if p.suffix.lower() == ".mp4"), vids[0] if vids else None)
+        if not out:
+            raise RuntimeError("RIFE produced no video")
+        return out
+
+    video = run_step("5. core RIFE ×2 (48 fps, keep audio)", do_rife)
     final = DEMO / "unboxing.mp4"
     shutil.copy(video, final)
     shutil.copy(OUT / "kf0_sealed.png", DEMO / "kf0_sealed.png")

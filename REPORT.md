@@ -5,7 +5,7 @@
 Open Unboxing is a Next.js 15 App Router studio. The browser never talks to Comfy. `POST /api/jobs` writes uploads under `.data/jobs/{id}/`, returns a job id, and runs the pipeline in-process. `GET /api/jobs/{id}` is the poller. `GET /api/jobs/{id}/output` streams the MP4.
 
 ```
-product stills ──► rembg (ISNet) ──► scale-fit into preset well
+product stills ──► BiRefNet (core) ──► scale-fit into preset well
                                           │
 preset plates (lid / empty / mask) ───────┤
                                           ▼
@@ -18,7 +18,7 @@ preset plates (lid / empty / mask) ───────┤
             (first-last, audio on)                    (native stereo ASMR)
                      │
                      ▼
-            ffmpeg concat  (+ workflows/concat_rife.json)
+            concat_rife.json (core ConcatenateVideo + RIFE 4.26 ×2)
 ```
 
 Comfy client: `src/lib/comfy.ts` and `scripts/comfy_cloud.py`. Talks to a Comfy serverless deployment (Comfy Build spec: [`build/comfy-build.yaml`](build/comfy-build.yaml)).
@@ -38,11 +38,11 @@ DynamicCombo (LTX `model`, MiniMax `model`) on Cloud’s API format uses **dotte
 | Step | Graph | Models / nodes |
 | --- | --- | --- |
 | Preset plates | `flux3_t2i.json` | FLUX 3 Image partner node, 1K, 3:4 |
-| Cutout | `product_cutout.json` | WAS `Image Rembg (Remove Background)` / ISNet |
+| Cutout | `product_cutout.json` | Core `LoadBackgroundRemovalModel` `birefnet.safetensors` → `RemoveBackground` → `InvertMask` → `JoinImageWithAlpha` |
 | Blend edit | `flux3_image_edit.json` | FLUX 3, refs as `image 1` / `image 2` |
 | Open-weights edit | `qwen_image_edit_2511.json` | `qwen_image_edit_2511_fp8mixed` + Lightning 4-step LoRA, denoise 0.35 |
-| Animate | `ltx25_flf2v.json` | LTX 2.5 Fast, 720×1280, 3s, 24 fps, audio on |
-| Concat + RIFE | `concat_rife.json` | `ConcatenateVideo` → `RIFE VFI` ×2 → `VHS_VideoCombine` |
+| Animate | `ltx25_flf2v.json` | LTX 2.5 Fast, 720×1280, 3s, 24 fps, audio on; locked-off 90° overhead |
+| Concat + RIFE | `concat_rife.json` | Core `ConcatenateVideo` → `GetVideoComponents` → `FrameInterpolationModelLoader` `rife_v4.26.safetensors` → `FrameInterpolate` ×2 → `CreateVideo` 48 fps + audio |
 | Alt video | `minimax_h3_r2v.json` | MiniMax H3 Max, 768P, native audio |
 
 Node/input map: [`workflows/NODE_MAP.md`](workflows/NODE_MAP.md).
@@ -75,21 +75,23 @@ The generate request is long-running. Keep the Node process alive. Do not deploy
 | [`demo/product/`](demo/product/) | Five sage ceramic pour-over stills |
 | [`public/presets/`](public/presets/) | Kraft / rigid / tissue plates + insert masks |
 
-Pipeline that produced this sample on the serverless endpoint (API v2):
+Pipeline that produced the committed sample (API v2, before this core-node rewrite):
 
-1. WAS rembg job `6466b370-…` ran node 2 (`Image Rembg (Remove Background)`) then failed: *no progress for 10 minutes, log did not grow, almost no CPU*. A second rembg submit was canceled. Cutout used a local off-white matte of `demo/product/01_hero.png`.
-2. Magenta-well scale-fit into `public/presets/kraft_mailer/empty.png` (120904 well hits)
+1. WAS rembg job `6466b370-…` stalled (10-minute no-progress watchdog). Cutout used a local off-white matte.
+2. Magenta-well scale-fit into `public/presets/kraft_mailer/empty.png`
 3. FLUX 3 blend edit job `b2e9e6ae-…` succeeded → `kf1_nested.png`
 4. LTX 2.5 Fast first-last-frame job `bfabd4b4-…` succeeded, 3s 720×1280 with stereo audio
+
+This revision did **not** regenerate that clip. Graphs and the studio orchestrator now use core BiRefNet + core RIFE 4.26 (`build/comfy-build.yaml` has those weights; no WAS / Frame-Interpolation / VideoHelperSuite packs). `scripts/e2e_demo.py` runs cutout on the endpoint (no local matte) and adds a RIFE ×2 pass. LTX prompts require a locked-off static 90° overhead camera.
 
 `npm run typecheck` and `npm run build` both succeeded on this tree.
 
 ## Open issues
 
 - Generations need a funded `COMFY_API_KEY`. The client does not read any other key.
-- WAS rembg on this Comfy Build replica stalled with the 10-minute no-progress watchdog. `scripts/e2e_demo.py` falls back to a local off-white matte. The studio pipeline still submits `product_cutout.json`.
-- FLUX 3’s blend edit recovered a nested plate but drifted the camera off true 90° overhead (three-quarter table view). LTX carried that drift into later frames. The first video beat stays overhead.
-- The committed demo is **one** LTX pair (sealed → nested), not the full four-clip concat + RIFE pass. The graphs and orchestrator for the full path are in-repo.
+- The committed `demo/unboxing.mp4` predates the core BiRefNet / RIFE graphs. A new endpoint run was not taken in this code-only pass.
+- FLUX 3’s earlier blend drifted off true 90° overhead; LTX prompts now lock the camera. That is untested on a new clip.
+- The committed demo is **one** LTX pair (sealed → nested). The studio path concatenates four clips then RIFE ×2 via `concat_rife.json`.
 - MiniMax H3 Max R2V is wired (dotted DynamicCombo + autogrow refs) but was not run for this sample (budget).
 - Magenta chroma-key leaves a pink fringe on some wells; the insert rects in `metadata.json` are the operational crop.
 - No deploy, push, or social post was made.
