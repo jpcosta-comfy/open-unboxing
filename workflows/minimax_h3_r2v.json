@@ -39,11 +39,9 @@
       "model.duration": 6,
       "model.prompt_expansion_mode": "balanced",
       "model.reference_detail": "standard",
-      "model.reference_images": {
-        "image_1": ["10", 0],
-        "image_2": ["11", 0],
-        "image_3": ["12", 0]
-      },
+      "model.reference_images.image_1": ["10", 0],
+      "model.reference_images.image_2": ["11", 0],
+      "model.reference_images.image_3": ["12", 0],
       "seed": 42,
       "watermark": false
     },

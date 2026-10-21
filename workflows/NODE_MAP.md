@@ -6,7 +6,7 @@ All graphs under this folder are **API format** (`{ "nodeId": { "class_type", "i
 "extra_data": { "api_key_comfy_org": "<COMFY_API_KEY>" }
 ```
 
-DynamicCombo values on Comfy Cloud’s API format use **dotted keys**: `"model": "LTX-2.5 (Fast)"` plus `"model.duration"`, `"model.resolution"`, `"model.fps"`, `"model.generate_audio"`. Autogrow slots also use **flat dotted keys**: `"images.image_1": ["10", 0]`, `"images.image_2": ["11", 0]`. Do not nest them as `"images": { "image_1": … }`; Comfy Cloud silently drops the nested object, so `Flux3ImageNode` runs text-only and invents a product instead of using the reference.
+DynamicCombo values on Comfy Cloud’s API format use **dotted keys**: `"model": "LTX-2.5 (Fast)"` plus `"model.duration"`, `"model.resolution"`, `"model.fps"`, `"model.generate_audio"`. Autogrow slots also use **flat dotted keys**: `"images.image_1": ["10", 0]`, `"images.image_2": ["11", 0]`. Under a DynamicCombo the prefix stacks: `"model.reference_images.image_1"` (MiniMax H3). Do not nest them as `"images": { "image_1": … }`; Comfy Cloud silently drops the nested object, so `Flux3ImageNode` runs text-only and invents a product instead of using the reference.
 
 Cutout and RIFE use **core** nodes only (no WAS, no Frame-Interpolation pack, no VideoHelperSuite). Models live in the Comfy Build spec [`build/comfy-build.yaml`](../build/comfy-build.yaml): `birefnet.safetensors` under `models/background_removal`, `rife_v4.26.safetensors` under `models/frame_interpolation`.
 

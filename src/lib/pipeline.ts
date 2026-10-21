@@ -204,7 +204,12 @@ async function h3Video(opts: {
   setInput(wf, "20", "model.duration", 6);
   setInput(wf, "20", "model.prompt_expansion_mode", "balanced");
   setInput(wf, "20", "model.reference_detail", "standard");
-  setInput(wf, "20", "model.reference_images", images);
+  // Autogrow slots under a DynamicCombo are flat keys: "model.reference_images.image_N".
+  const h3 = (wf["20"].inputs ?? {}) as Record<string, unknown>;
+  for (const key of Object.keys(h3)) {
+    if (key.startsWith("model.reference_images")) delete h3[key];
+  }
+  for (const [key, link] of Object.entries(images)) h3[`model.reference_images.${key}`] = link;
   setInput(wf, "30", "filename_prefix", `ou_h3_${opts.jobId.slice(0, 8)}`);
   const promptId = await submitWorkflow(wf);
   await patchJob(opts.jobId, "animate", "MiniMax H3 Max is generating native-audio unboxing.", { }, promptId);
