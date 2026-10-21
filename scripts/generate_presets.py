@@ -98,7 +98,6 @@ def flux3_t2i(prompt: str, seed: int, prefix: str, aspect: str = "3:4", resoluti
             "class_type": "Flux3ImageNode",
             "inputs": {
                 "prompt": prompt,
-                "images": {},
                 "aspect_ratio": aspect,
                 "resolution": resolution,
                 "grounding": False,

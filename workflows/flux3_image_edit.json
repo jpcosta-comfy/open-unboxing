@@ -6,8 +6,8 @@
       "10.image": "LoadImage filename of the composite / current keyframe",
       "11.image": "Optional product reference",
       "1.prompt": "Edit instruction. Keep camera locked overhead.",
-      "1.images.image_1": "link → node 10",
-      "1.images.image_2": "link → node 11",
+      "1[\"images.image_1\"]": "link → node 10 (flat autogrow key)",
+      "1[\"images.image_2\"]": "link → node 11 (flat autogrow key)",
       "1.aspect_ratio": "3:4 or 9:16",
       "1.resolution": "1K"
     },
@@ -27,10 +27,8 @@
     "class_type": "Flux3ImageNode",
     "inputs": {
       "prompt": "Using image 1 as the locked overhead plate, nest the exact product from image 2 into the insert well so it looks physically present: correct contact shadows, slight tissue or paperboard tuck, matching light. Do not change camera, desk, box branding (there is none), or crop. Hands are not in this frame.",
-      "images": {
-        "image_1": ["10", 0],
-        "image_2": ["11", 0]
-      },
+      "images.image_1": ["10", 0],
+      "images.image_2": ["11", 0],
       "aspect_ratio": "3:4",
       "resolution": "1K",
       "grounding": false,

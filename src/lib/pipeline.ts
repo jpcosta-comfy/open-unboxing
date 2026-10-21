@@ -85,9 +85,14 @@ async function editKeyframe(opts: {
       const inputs = (node.inputs ?? {}) as Record<string, unknown>;
       inputs.prompt = opts.prompt;
       inputs.seed = opts.seed;
-      inputs.images = productName
-        ? { image_1: ["10", 0], image_2: ["11", 0] }
-        : { image_1: ["10", 0] };
+      // Autogrow inputs must be flat "images.image_N" keys. A nested `images`
+      // object is silently ignored and FLUX runs text-only (it invents a product).
+      for (const key of Object.keys(inputs)) {
+        if (key === "images" || key.startsWith("images.")) delete inputs[key];
+      }
+      inputs["images.image_1"] = ["10", 0];
+      if (productName) inputs["images.image_2"] = ["11", 0];
+      else delete wf["11"];
       node.inputs = inputs;
       setInput(wf, "2", "filename_prefix", `ou_${opts.name}`);
     },

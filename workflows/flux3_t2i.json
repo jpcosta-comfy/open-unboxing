@@ -15,7 +15,6 @@
     "class_type": "Flux3ImageNode",
     "inputs": {
       "prompt": "Photographed from a camera mounted directly above, true 90-degree top-down overhead view, a sealed unbranded brown kraft paper mailer shipping box on a pale oak desk, no logos, no text, no hands, even studio daylight, photorealistic product photography.",
-      "images": {},
       "aspect_ratio": "3:4",
       "resolution": "1K",
       "grounding": false,

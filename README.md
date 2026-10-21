@@ -75,9 +75,9 @@ comfy deploy stop build/
 API-format graphs live in [`workflows/`](workflows/NODE_MAP.md). The studio orchestrates them:
 
 1. **Upload** product stills (`POST {COMFY_BASE_URL}/api/v2/assets` → LoadImage `file_path`)
-2. **Cutout** — `product_cutout.json` (core BiRefNet: `LoadBackgroundRemovalModel` → `RemoveBackground` → `InvertMask` → `JoinImageWithAlpha`)
+2. **Cutout** — `product_cutout.json` (core BiRefNet: `LoadBackgroundRemovalModel` → `RemoveBackground` → `InvertMask` → `JoinImageWithAlpha`) — `InvertMask` is correct here only because `JoinImageWithAlpha` uses `1 - mask`; if you composite with `ImageCompositeMasked` instead, feed the `RemoveBackground` mask directly
 3. **Composite** — scale-fit the cutout into the preset insert mask (magenta well → bbox)
-4. **Blend edit** — `flux3_image_edit.json` (default) or `qwen_image_edit_2511.json` (open weights, Lightning 4-step, denoise 0.35)
+4. **Blend edit** — `flux3_image_edit.json` (default; references go in as flat `"images.image_1"` / `"images.image_2"` keys, since a nested `"images": {…}` object is ignored and FLUX invents the product) or `qwen_image_edit_2511.json` (open weights, Lightning 4-step, denoise 0.35)
 5. **Five overhead keyframes** — sealed, nested, lift, rotate, table (strict 90° overhead)
 6. **Animate pairs** — `ltx25_flf2v.json` (LTX 2.5 Fast, first-last-frame, 720×1280, 3s, audio on; locked-off static overhead camera, only hands move)
 7. **Concat + RIFE** — `concat_rife.json` (core `ConcatenateVideo` → `FrameInterpolate` ×2 with `rife_v4.26.safetensors` → `CreateVideo` 48 fps, audio kept)
